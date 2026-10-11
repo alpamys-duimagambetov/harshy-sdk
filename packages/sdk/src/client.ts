@@ -529,6 +529,8 @@ export function createHarshy(deps: CreateHarshyDeps = {}): HarshyClient {
   };
 
   const withSpeedLimit = (sample: LocationSample): LocationSample => {
+    // Cache downloads happen only from a live trip lookup. The settings map
+    // never calls this; it only reads tiles already on disk.
     const looked = deps.speedLimitLookup?.lookup(sample);
     const limit = looked != null && looked > 0 ? looked : sample.speedLimitMps;
     if (limit == null || !(limit > 0) || sample.speedLimitMps === limit) {
