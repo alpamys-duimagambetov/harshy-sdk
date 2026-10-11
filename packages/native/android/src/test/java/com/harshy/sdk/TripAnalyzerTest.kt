@@ -727,6 +727,34 @@ class TripAnalyzerTest {
   }
 
   @Test
+  fun ignoresAStoppedHarshBrakeWhenTheEntrySpeedIsAOneFixSpike() {
+    val analyzer = TripAnalyzer(DetectorConfig.DEFAULT, "spike-stop", 0.0, DeviceInfo("android", "test"))
+    val lat = 59.4
+    val lon = 24.8
+    analyzer.pushLocation(at(0.0, 0.05, 0.0, lat, lon))
+    val spike = shift(lat, lon, 0.0, 4.0)
+    analyzer.pushLocation(at(9000.0, 3.9, 0.0, spike.first, spike.second))
+    val stop = shift(spike.first, spike.second, 0.0, 1.6)
+    analyzer.pushLocation(at(10000.0, 0.16, 0.0, stop.first, stop.second))
+    assertFalse(analyzer.getEvents().any { it.type == EVENT_HARSH_BRAKE })
+  }
+
+  @Test
+  fun stillCountsAHarshBrakeAfterAShortRealLaunch() {
+    val analyzer = TripAnalyzer(DetectorConfig.DEFAULT, "launch-brake", 0.0, DeviceInfo("android", "test"))
+    val lat = 59.4
+    val lon = 24.8
+    analyzer.pushLocation(at(0.0, 0.5, 0.0, lat, lon))
+    val fast = shift(lat, lon, 0.0, 2.2)
+    analyzer.pushLocation(at(1000.0, 4.0, 0.0, fast.first, fast.second))
+    val stop = shift(fast.first, fast.second, 0.0, 2.0)
+    analyzer.pushLocation(at(2000.0, 0.0, 0.0, stop.first, stop.second))
+    val brakes = analyzer.getEvents().filter { it.type == EVENT_HARSH_BRAKE }
+    assertEquals(1, brakes.size)
+    assertEquals(4.0, brakes[0].peak, 1e-5)
+  }
+
+  @Test
   fun ignoresACrawlWobbleThatDoesNotDropTwoMps() {
     val analyzer = TripAnalyzer(
       DetectorConfig.DEFAULT.copy(harshBrakeMps2 = 1.0, minSpeedMps = 2.0),
@@ -761,6 +789,29 @@ class TripAnalyzerTest {
     val brakes = analyzer.getEvents().filter { it.type == EVENT_HARSH_BRAKE }
     assertEquals(1, brakes.size)
     assertTrue(brakes[0].peak >= 3.0)
+  }
+
+  @Test
+  fun doesNotOpenAnImuBrakeFromAOneFixSpeedSpike() {
+    val analyzer = TripAnalyzer(DetectorConfig.DEFAULT, "spike-imu", 0.0, DeviceInfo("android", "test"))
+    var lat = 59.4
+    var lon = 24.8
+    analyzer.pushLocation(at(0.0, 10.0, 0.0, lat, lon))
+    var next = shift(lat, lon, 0.0, 9.0)
+    analyzer.pushLocation(at(1000.0, 8.0, 0.0, next.first, next.second))
+    analyzer.pushImu(mounted(1000.0, -3.0))
+    lat = next.first
+    lon = next.second
+    next = shift(lat, lon, 0.0, 4.0)
+    analyzer.pushLocation(at(6000.0, 3.9, 0.0, next.first, next.second))
+    lat = next.first
+    lon = next.second
+    next = shift(lat, lon, 0.0, 1.6)
+    analyzer.pushLocation(at(7000.0, 0.16, 0.0, next.first, next.second))
+    for (t in listOf(7100.0, 7200.0, 7300.0, 7400.0)) {
+      analyzer.pushImu(mounted(t, -4.0))
+    }
+    assertFalse(analyzer.getEvents().any { it.type == EVENT_HARSH_BRAKE })
   }
 
   @Test

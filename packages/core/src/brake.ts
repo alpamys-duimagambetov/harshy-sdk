@@ -1,4 +1,4 @@
-import { magnitude } from "./geo.js";
+import { haversineM, magnitude } from "./geo.js";
 import type { Vec3 } from "./types.js";
 
 /** Speed that must be lost before a stop that has already ended can count. */
@@ -6,6 +6,13 @@ export const BRAKE_MIN_DROP_MPS = 2;
 
 /** Path speed must stay under this fraction of the entry speed when the car has stopped. */
 export const BRAKE_PATH_SPEED_X = 0.75;
+
+/**
+ * A stopped brake ignores an entry speed this far above the path speed into
+ * that fix, when it is also several times the path speed. A real stop agrees.
+ */
+export const BRAKE_ENTRY_PATH_GAP_MPS = 2.5;
+export const BRAKE_ENTRY_PATH_RATIO = 3;
 
 /** Forward-axis load must hold this long before an IMU brake is real. */
 export const IMU_BRAKE_HOLD_MS = 300;
@@ -37,7 +44,41 @@ export type GpsBrakeSample = {
   exitSpeedMps: number | null;
   dtSec: number | null;
   stepM: number | null;
+  /** Path speed into the entry fix. Missing means the chip speed is trusted. */
+  entryPathSpeedMps?: number | null;
 };
+
+/** Displacement speed between two fixes. Missing or an unusable gap trusts the chip. */
+export function pathSpeedMps(
+  from: { t: number; lat: number; lon: number } | null | undefined,
+  to: { t: number; lat: number; lon: number } | null | undefined,
+): number | null {
+  if (!from || !to) {
+    return null;
+  }
+  const dtSec = (to.t - from.t) / 1000;
+  if (!Number.isFinite(dtSec) || dtSec < 0.05 || dtSec > 60) {
+    return null;
+  }
+  const speed = haversineM(from, to) / dtSec;
+  return Number.isFinite(speed) ? speed : null;
+}
+
+/**
+ * False when the chip speed is a spike the path into that fix cannot support.
+ * A missing path trusts the chip so a real stop at the start of the trace still counts.
+ */
+export function chipSpeedAgreesWithPath(chipMps: number, pathMps: number | null): boolean {
+  if (pathMps == null || !Number.isFinite(pathMps) || pathMps < 0) {
+    return true;
+  }
+  if (!Number.isFinite(chipMps) || chipMps < 0) {
+    return true;
+  }
+  return !(
+    chipMps - pathMps > BRAKE_ENTRY_PATH_GAP_MPS && chipMps > pathMps * BRAKE_ENTRY_PATH_RATIO
+  );
+}
 
 /**
  * True when this GPS speed step is a harsh brake.
@@ -65,6 +106,9 @@ export function gpsHarshBrakeQualifies(
     return false;
   }
   if (entrySpeedMps - exitSpeedMps < BRAKE_MIN_DROP_MPS) {
+    return false;
+  }
+  if (!chipSpeedAgreesWithPath(entrySpeedMps, sample.entryPathSpeedMps ?? null)) {
     return false;
   }
   if (dtSec == null || stepM == null || !(dtSec > 0)) {

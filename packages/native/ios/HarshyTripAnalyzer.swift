@@ -135,8 +135,9 @@ public final class HarshyTripAnalyzer {
     // chip-confirmed and defeated path-only GPS noise gates.
     stored.courseDeg = sample.courseDeg
     location.append(stored)
+    let previousGood = lastGoodLocation
     if locationUsable(stored) {
-      let previous = lastGoodLocation
+      let previous = previousGood
       if let previous {
         distanceM += harshyHaversineM(previous, stored)
       }
@@ -160,9 +161,15 @@ public final class HarshyTripAnalyzer {
       entrySpeedMps: accel.entrySpeedMps,
       exitSpeedMps: accel.exitSpeedMps,
       dtSec: accel.dtSec,
-      stepM: accel.stepM
+      stepM: accel.stepM,
+      entryPathSpeedMps: accel.entryPathSpeedMps
     )
-    if let movingSpeed = stored.speedMps, movingSpeed >= config.minSpeedMps {
+    if let movingSpeed = stored.speedMps,
+      movingSpeed >= config.minSpeedMps,
+      harshyChipSpeedAgreesWithPath(
+        chipMps: movingSpeed,
+        pathMps: harshyPathSpeedMps(from: previousGood, to: stored)
+      ) {
       lastMovingAtMs = stored.t
     }
     let yaw = accel.yawRateRadps
@@ -295,10 +302,11 @@ public final class HarshyTripAnalyzer {
     entrySpeedMps: Double?,
     exitSpeedMps: Double?,
     dtSec: Double?,
-    stepM: Double?
+    stepM: Double?,
+    entryPathSpeedMps: Double?
   ) {
     guard let current = lastGoodLocation, current.speedMps != nil else {
-      return (nil, nil, nil, false, nil, nil, nil, nil)
+      return (nil, nil, nil, false, nil, nil, nil, nil, nil)
     }
     var previous: HarshyLocationSample?
     var previousIndex = -1
@@ -315,17 +323,18 @@ public final class HarshyTripAnalyzer {
       }
     }
     guard let previous, let prevSpeed = previous.speedMps, let currentSpeed = current.speedMps else {
-      return (nil, nil, nil, false, nil, nil, nil, nil)
+      return (nil, nil, nil, false, nil, nil, nil, nil, nil)
     }
     let dtSec = (current.t - previous.t) / 1000
     if dtSec < harshyGpsAccelMinDtSec || dtSec > harshyGpsAccelMaxDtSec {
-      return (nil, nil, nil, false, nil, nil, nil, nil)
+      return (nil, nil, nil, false, nil, nil, nil, nil, nil)
     }
     let longitudinal = (currentSpeed - prevSpeed) / dtSec
+    let before: HarshyLocationSample? = previousIndex > 0 ? location[previousIndex - 1] : nil
     let pathMinM = harshyPathBearingMinM(prevAccuracyM: previous.accuracyM, currAccuracyM: current.accuracyM)
-    let pathFromDeg: Double? = previousIndex > 0
-      ? harshyPathBearingDeg(from: location[previousIndex - 1], to: previous, minDistanceM: pathMinM)
-      : nil
+    let pathFromDeg: Double? = before.flatMap {
+      harshyPathBearingDeg(from: $0, to: previous, minDistanceM: pathMinM)
+    }
     let yaw = harshyConfirmedYawDetail(
       dtSec: dtSec,
       chipFromDeg: previous.courseDeg,
@@ -370,7 +379,8 @@ public final class HarshyTripAnalyzer {
       prevSpeed,
       currentSpeed,
       dtSec,
-      harshyHaversineM(previous, current)
+      harshyHaversineM(previous, current),
+      harshyPathSpeedMps(from: before, to: previous)
     )
   }
 

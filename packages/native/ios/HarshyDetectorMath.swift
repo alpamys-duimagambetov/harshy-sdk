@@ -958,6 +958,8 @@ func harshyDecidePendingImpact(
 
 let harshyBrakeMinDropMps = 2.0
 let harshyBrakePathSpeedX = 0.75
+let harshyBrakeEntryPathGapMps = 2.5
+let harshyBrakeEntryPathRatio = 3.0
 let harshyImuBrakeHoldMs = 300.0
 let harshyImuBrakeGapMs = 150.0
 let harshyImuBrakeLearnMinMps = 3.0
@@ -973,6 +975,26 @@ struct HarshyGpsBrakeSample {
   var exitSpeedMps: Double? = nil
   var dtSec: Double? = nil
   var stepM: Double? = nil
+  /// Path speed into the entry fix. Missing means the chip speed is trusted.
+  var entryPathSpeedMps: Double? = nil
+}
+
+/// Displacement speed between two fixes. A missing or unusable gap trusts the chip.
+func harshyPathSpeedMps(from: HarshyLocationSample?, to: HarshyLocationSample?) -> Double? {
+  guard let from, let to else { return nil }
+  let dtSec = (to.t - from.t) / 1000
+  if !dtSec.isFinite || dtSec < 0.05 || dtSec > 60 { return nil }
+  let speed = harshyHaversineM(from, to) / dtSec
+  return speed.isFinite ? speed : nil
+}
+
+/// False when the chip speed is a spike the path into that fix cannot support.
+/// A missing path trusts the chip so a real stop at the start of the trace still counts.
+func harshyChipSpeedAgreesWithPath(chipMps: Double, pathMps: Double?) -> Bool {
+  guard let pathMps, pathMps.isFinite, pathMps >= 0, chipMps.isFinite, chipMps >= 0 else {
+    return true
+  }
+  return !(chipMps - pathMps > harshyBrakeEntryPathGapMps && chipMps > pathMps * harshyBrakeEntryPathRatio)
 }
 
 func harshyGpsHarshBrakeQualifies(
@@ -990,6 +1012,7 @@ func harshyGpsHarshBrakeQualifies(
   }
   if exit >= minSpeedMps { return true }
   if entry < minSpeedMps || entry - exit < harshyBrakeMinDropMps { return false }
+  if !harshyChipSpeedAgreesWithPath(chipMps: entry, pathMps: sample.entryPathSpeedMps) { return false }
   guard let dt = sample.dtSec, let step = sample.stepM, dt > 0 else { return false }
   return step / dt < entry * harshyBrakePathSpeedX
 }

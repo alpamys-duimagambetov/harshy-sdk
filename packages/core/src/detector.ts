@@ -8,6 +8,8 @@ import {
   brakeAlongForward,
   forwardSampleFromGps,
   gpsHarshBrakeQualifies,
+  pathSpeedMps,
+  chipSpeedAgreesWithPath,
   horizontalLinear,
   type GpsBrakeSample,
 } from "./brake.js";
@@ -342,6 +344,7 @@ function emptyGpsWindow(): GpsWindowAccel {
     exitSpeedMps: null,
     dtSec: null,
     stepM: null,
+    entryPathSpeedMps: null,
   };
 }
 
@@ -430,6 +433,7 @@ function gpsWindowAccel(state: AnalyzerState): GpsWindowAccel {
     exitSpeedMps: current.speedMps,
     dtSec,
     stepM: haversineM(previous, current),
+    entryPathSpeedMps: pathSpeedMps(before, previous),
   };
 }
 
@@ -1690,8 +1694,8 @@ export function createTripAnalyzer(
     };
     state.location.push(withRoad);
     trimRingBuffer(state.location, MAX_LOCATION_SAMPLES);
+    const prevGood = state.lastGoodLocation;
     if (locationUsable(withRoad, state.config)) {
-      const prevGood = state.lastGoodLocation;
       if (prevGood) {
         state.distanceM += haversineM(prevGood, withRoad);
       }
@@ -1725,8 +1729,13 @@ export function createTripAnalyzer(
       exitSpeedMps: accel.exitSpeedMps,
       dtSec: accel.dtSec,
       stepM: accel.stepM,
+      entryPathSpeedMps: accel.entryPathSpeedMps,
     };
-    if (withRoad.speedMps != null && withRoad.speedMps >= state.config.minSpeedMps) {
+    if (
+      withRoad.speedMps != null &&
+      withRoad.speedMps >= state.config.minSpeedMps &&
+      chipSpeedAgreesWithPath(withRoad.speedMps, pathSpeedMps(prevGood, withRoad))
+    ) {
       state.lastMovingAtMs = withRoad.t;
     }
     const yaw = accel.yawRateRadps;

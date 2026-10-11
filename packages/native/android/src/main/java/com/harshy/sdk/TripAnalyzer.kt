@@ -140,8 +140,9 @@ class TripAnalyzer(
     )
     location.add(stored)
     trimRingBuffer(location, MAX_LOCATION_SAMPLES)
+    val previousGood = lastGoodLocation
     if (locationUsable(stored, config)) {
-      val previous = lastGoodLocation
+      val previous = previousGood
       if (previous != null) {
         distanceM += haversineM(previous, stored)
       }
@@ -170,9 +171,14 @@ class TripAnalyzer(
       accel.exitSpeedMps,
       accel.dtSec,
       accel.stepM,
+      accel.entryPathSpeedMps,
     )
     val movingSpeed = stored.speedMps
-    if (movingSpeed != null && movingSpeed >= config.minSpeedMps) {
+    if (
+      movingSpeed != null &&
+      movingSpeed >= config.minSpeedMps &&
+      chipSpeedAgreesWithPath(movingSpeed, pathSpeedMps(previousGood, stored))
+    ) {
       lastMovingAtMs = stored.t
     }
     val yaw = accel.yawRateRadps
@@ -317,6 +323,7 @@ class TripAnalyzer(
     val exitSpeedMps: Double? = null,
     val dtSec: Double? = null,
     val stepM: Double? = null,
+    val entryPathSpeedMps: Double? = null,
   )
 
   private fun gpsWindowAccel(): GpsAccel {
@@ -399,6 +406,7 @@ class TripAnalyzer(
       currentSpeed,
       dtSec,
       haversineM(prev, current),
+      pathSpeedMps(before, prev),
     )
   }
 

@@ -784,6 +784,40 @@ describe("detector", () => {
     expect(brakes[0]?.peak).toBeCloseTo(6, 5);
   });
 
+  it("ignores a stopped harsh brake when the entry speed is a one-fix spike", () => {
+    const analyzer = createTripAnalyzer(undefined, {
+      sessionId: "spike-stop",
+      startedAtMs: 0,
+      device: { platform: "web", model: "test" },
+    });
+    const lat = 59.4;
+    const lon = 24.8;
+    analyzer.pushLocation(placed(0, 0.05, 0, lat, lon));
+    const spike = destination(lat, lon, 0, 4);
+    analyzer.pushLocation(placed(9000, 3.9, 0, spike.lat, spike.lon));
+    const stop = destination(spike.lat, spike.lon, 0, 1.6);
+    analyzer.pushLocation(placed(10000, 0.16, 0, stop.lat, stop.lon));
+    expect(analyzer.getEvents().some((event) => event.type === "harsh_brake")).toBe(false);
+  });
+
+  it("still counts a harsh brake after a short real launch", () => {
+    const analyzer = createTripAnalyzer(undefined, {
+      sessionId: "launch-brake",
+      startedAtMs: 0,
+      device: { platform: "web", model: "test" },
+    });
+    const lat = 59.4;
+    const lon = 24.8;
+    analyzer.pushLocation(placed(0, 0.5, 0, lat, lon));
+    const fast = destination(lat, lon, 0, 2.2);
+    analyzer.pushLocation(placed(1000, 4, 0, fast.lat, fast.lon));
+    const stop = destination(fast.lat, fast.lon, 0, 2);
+    analyzer.pushLocation(placed(2000, 0, 0, stop.lat, stop.lon));
+    const brakes = analyzer.getEvents().filter((event) => event.type === "harsh_brake");
+    expect(brakes).toHaveLength(1);
+    expect(brakes[0]?.peak).toBeCloseTo(4, 5);
+  });
+
   it("ignores a crawl wobble that does not drop 2 m/s", () => {
     const analyzer = createTripAnalyzer(
       { harshBrakeMps2: 1, minSpeedMps: 2 },
@@ -823,6 +857,32 @@ describe("detector", () => {
     const brakes = analyzer.getEvents().filter((event) => event.type === "harsh_brake");
     expect(brakes).toHaveLength(1);
     expect(brakes[0]?.peak).toBeGreaterThanOrEqual(3);
+  });
+
+  it("does not open an IMU brake from a one-fix speed spike", () => {
+    const analyzer = createTripAnalyzer(undefined, {
+      sessionId: "spike-imu",
+      startedAtMs: 0,
+      device: { platform: "web", model: "test" },
+    });
+    let lat = 59.4;
+    let lon = 24.8;
+    analyzer.pushLocation(placed(0, 10, 0, lat, lon));
+    let next = destination(lat, lon, 0, 9);
+    analyzer.pushLocation(placed(1000, 8, 0, next.lat, next.lon));
+    analyzer.pushImu(mountedImu(1000, { x: -3, y: 0, z: 0 }));
+    lat = next.lat;
+    lon = next.lon;
+    next = destination(lat, lon, 0, 4);
+    analyzer.pushLocation(placed(6000, 3.9, 0, next.lat, next.lon));
+    lat = next.lat;
+    lon = next.lon;
+    next = destination(lat, lon, 0, 1.6);
+    analyzer.pushLocation(placed(7000, 0.16, 0, next.lat, next.lon));
+    for (const t of [7100, 7200, 7300, 7400]) {
+      analyzer.pushImu(mountedImu(t, { x: -4, y: 0, z: 0 }));
+    }
+    expect(analyzer.getEvents().some((event) => event.type === "harsh_brake")).toBe(false);
   });
 
   it("does not score an IMU brake that is vertical, too short, or after the phone tilts", () => {

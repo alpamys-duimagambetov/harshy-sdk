@@ -4,6 +4,8 @@ import kotlin.math.abs
 
 internal const val BRAKE_MIN_DROP_MPS = 2.0
 internal const val BRAKE_PATH_SPEED_X = 0.75
+internal const val BRAKE_ENTRY_PATH_GAP_MPS = 2.5
+internal const val BRAKE_ENTRY_PATH_RATIO = 3.0
 internal const val IMU_BRAKE_HOLD_MS = 300.0
 internal const val IMU_BRAKE_GAP_MS = 150.0
 internal const val IMU_BRAKE_LEARN_MIN_MPS = 3.0
@@ -19,7 +21,35 @@ internal data class GpsBrakeSample(
   val exitSpeedMps: Double?,
   val dtSec: Double?,
   val stepM: Double?,
+  val entryPathSpeedMps: Double? = null,
 )
+
+/** Displacement speed between two fixes. A missing or unusable gap trusts the chip. */
+internal fun pathSpeedMps(from: LocationSample?, to: LocationSample?): Double? {
+  if (from == null || to == null) {
+    return null
+  }
+  val dtSec = (to.t - from.t) / 1000.0
+  if (!dtSec.isFinite() || dtSec < 0.05 || dtSec > 60.0) {
+    return null
+  }
+  val speed = haversineM(from, to) / dtSec
+  return if (speed.isFinite()) speed else null
+}
+
+/**
+ * False when the chip speed is a spike the path into that fix cannot support.
+ * A missing path trusts the chip so a real stop at the start of the trace still counts.
+ */
+internal fun chipSpeedAgreesWithPath(chipMps: Double, pathMps: Double?): Boolean {
+  if (pathMps == null || !pathMps.isFinite() || pathMps < 0.0) {
+    return true
+  }
+  if (!chipMps.isFinite() || chipMps < 0.0) {
+    return true
+  }
+  return !(chipMps - pathMps > BRAKE_ENTRY_PATH_GAP_MPS && chipMps > pathMps * BRAKE_ENTRY_PATH_RATIO)
+}
 
 internal fun gpsHarshBrakeQualifies(
   sample: GpsBrakeSample,
@@ -36,6 +66,9 @@ internal fun gpsHarshBrakeQualifies(
     return true
   }
   if (entry < minSpeedMps || entry - exit < BRAKE_MIN_DROP_MPS) {
+    return false
+  }
+  if (!chipSpeedAgreesWithPath(entry, sample.entryPathSpeedMps)) {
     return false
   }
   val dt = sample.dtSec
