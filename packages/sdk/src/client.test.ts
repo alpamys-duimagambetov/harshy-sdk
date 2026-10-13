@@ -293,6 +293,98 @@ describe("Harshy SDK", () => {
     expect(client.getWatchState().trigger).toBe("manual");
     expect(started).toBe(false);
     expect(client.getLiveLocation()).toEqual([point]);
+    expect(client.getLiveEvents()).toEqual([]);
+  });
+
+  it("recover rehydrates journaled events for the live UI", async () => {
+    const track = [
+      {
+        t: 0,
+        lat: 32.0,
+        lon: 34.78,
+        altitudeM: null,
+        speedMps: 0.5,
+        courseDeg: 0,
+        accuracyM: 5,
+        altitudeAccuracyM: null,
+      },
+      {
+        t: 1000,
+        lat: 32.00002,
+        lon: 34.78,
+        altitudeM: null,
+        speedMps: 4,
+        courseDeg: 0,
+        accuracyM: 5,
+        altitudeAccuracyM: null,
+      },
+      {
+        t: 2000,
+        lat: 32.000038,
+        lon: 34.78,
+        altitudeM: null,
+        speedMps: 0,
+        courseDeg: 0,
+        accuracyM: 5,
+        altitudeAccuracyM: null,
+      },
+    ];
+    const events: Array<{ type: string }> = [];
+    const client = createHarshy({
+      nativeAvailable: true,
+      createNativeEngine: () => ({
+        kind: "native",
+        getCapabilities: async () => ({
+          location: true,
+          accelerometer: true,
+          linearAcceleration: true,
+          gravity: true,
+          gyroscope: true,
+          magnetometer: true,
+          barometer: false,
+          attitude: true,
+          backgroundLocation: true,
+        }),
+        getPermissionStatus: async () => ({
+          location: "granted",
+          backgroundLocation: "granted",
+          motion: "granted",
+          notifications: "granted",
+        }),
+        requestPermissions: async () => ({
+          location: "granted",
+          backgroundLocation: "granted",
+          motion: "granted",
+          notifications: "granted",
+        }),
+        start: async () => {},
+        stop: async () => ({
+          sessionId: "with-events",
+          startedAtMs: 0,
+          endedAtMs: 2000,
+          location: track,
+          imu: [],
+        }),
+        isRunning: async () => true,
+        getSnapshot: async () => ({
+          sessionId: "with-events",
+          startedAtMs: 0,
+          endedAtMs: 2000,
+          location: track,
+          imu: [],
+        }),
+        subscribe: () => () => {},
+      }),
+    });
+    client.subscribe({
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+
+    expect(await client.recover({ device: { platform: "android", model: "test" } })).toBe(true);
+    expect(client.getLiveEvents().some((event) => event.type === "harsh_brake")).toBe(true);
+    expect(events.some((event) => event.type === "harsh_brake")).toBe(true);
   });
 
   it("native Auto attach stamps the host device from createHarshy", async () => {

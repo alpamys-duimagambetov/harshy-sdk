@@ -24,6 +24,7 @@ import {
   warmupEndConfig,
   type DetectorConfig,
   type DeviceInfo,
+  type DrivingEvent,
   type IdleMotionState,
   type LiveMetrics,
   type LocationSample,
@@ -92,6 +93,13 @@ export type HarshyClient = {
    * draw a live path should seed from this, then append new `onLocation` samples.
    */
   getLiveLocation: () => LocationSample[];
+  /**
+   * Events already scored for the in-progress trip. Empty when idle.
+   * After `recover()`, seed the live event list from this (or listen to the
+   * `onEvent` burst `recover()` emits for journaled events), then append new
+   * `onEvent` samples.
+   */
+  getLiveEvents: () => DrivingEvent[];
   /** Compact sessions from `historyStore` (IMU dropped). Empty until `loadHistory()` or a persist. */
   getHistory: () => SessionExport[];
   loadHistory: () => Promise<SessionExport[]>;
@@ -631,6 +639,9 @@ export function createHarshy(deps: CreateHarshyDeps = {}): HarshyClient {
         analyzer.pushImu(sample);
       }
     }
+    // Journal replay fills the analyzer; surface those events so a reopened
+    // host shows the same list as before process death (path uses getLiveLocation).
+    const recoveredEvents = analyzer.getEvents();
     bindEngine();
     running = true;
     source = "native";
@@ -641,6 +652,13 @@ export function createHarshy(deps: CreateHarshyDeps = {}): HarshyClient {
         listener.onMetrics?.(lastMetrics);
       }
       publishLiveDisplay(lastMetrics, true);
+    }
+    if (recoveredEvents.length > 0) {
+      for (const listener of listeners) {
+        for (const event of recoveredEvents) {
+          listener.onEvent?.(event);
+        }
+      }
     }
     if (shouldAutoStop && !endingFromWatch) {
       endingFromWatch = true;
@@ -991,6 +1009,7 @@ export function createHarshy(deps: CreateHarshyDeps = {}): HarshyClient {
     }),
     getLastSession: () => lastSession,
     getLiveLocation: () => (running && lastRaw ? lastRaw.location.slice() : []),
+    getLiveEvents: () => (running && analyzer ? analyzer.getEvents() : []),
     getHistory: () => [...history],
     async loadHistory() {
       await persistTail;

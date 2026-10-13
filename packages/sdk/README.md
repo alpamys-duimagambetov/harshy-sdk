@@ -192,10 +192,13 @@ const client = createHarshy({ nativeAvailable, createNativeEngine });
 const recovered = await client.recover();
 if (recovered) {
   console.log("Resumed trip:", client.getState().sessionId);
+  // Seed UI from the journal — recover does not replay GPS on onLocation.
+  const path = client.getLiveLocation();
+  const events = client.getLiveEvents();
 }
 ```
 
-Call `recover()` before `arm()` so a live trip wins over watch restore. Recovered sessions keep journaled `trigger` (`auto` vs `manual`; older journals without it are `manual`).
+Call `recover()` before `arm()` so a live trip wins over watch restore. Recovered sessions keep journaled `trigger` (`auto` vs `manual`; older journals without it are `manual`). `recover()` re-emits journaled events on `onEvent` and exposes them on `getLiveEvents()` so a reopened host can show the same list; GPS still seeds from `getLiveLocation()` only.
 
 ## Automatic trips
 
@@ -696,6 +699,7 @@ type CreateHarshyDeps = {
 | `stopPreview()` | Stop that readout; does not stop a running trip |
 | `recover(options?)` | Attach to a surviving native trip |
 | `getLiveLocation()` | GPS samples for the in-progress trip (empty when idle). `recover()` does not replay journal fixes on `onLocation` |
+| `getLiveEvents()` | Events already scored for the in-progress trip (empty when idle). `recover()` also re-emits them on `onEvent` |
 | `stop(options?)` | Stop and return session export. `handoffToWatch: true` keeps the Android location foreground service for Auto |
 | `arm(options?)` | Opt in to Auto (preview watch; default client is manual) |
 | `disarm()` | Leave Auto; does not stop a running trip |
