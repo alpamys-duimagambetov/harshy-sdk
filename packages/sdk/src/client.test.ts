@@ -1289,6 +1289,25 @@ describe("Harshy SDK", () => {
     expect(client.getWatchState().phase).toBe("armed");
   });
 
+  it("keeps setDetectorConfig bars across start without a detector override", async () => {
+    const client = createHarshy({
+      engine: createSimulatedEngine({ immediate: true }),
+      nativeAvailable: false,
+    });
+    client.setDetectorConfig({
+      harshAccelMps2: 2,
+      harshBrakeMps2: 2.5,
+      harshCornerMps2: 2.5,
+    });
+    expect(client.getDetectorConfig().harshAccelMps2).toBe(2);
+    await client.start({ trigger: "auto" });
+    const session = await client.stop();
+    expect(session.config.harshAccelMps2).toBe(2);
+    expect(session.config.harshBrakeMps2).toBe(2.5);
+    expect(session.config.harshCornerMps2).toBe(2.5);
+    expect(client.getDetectorConfig().harshAccelMps2).toBe(2);
+  });
+
   it("keeps the location service when an auto trip stops", async () => {
     let handoff: boolean | undefined;
     const { engine } = locPumpEngine("handoff");

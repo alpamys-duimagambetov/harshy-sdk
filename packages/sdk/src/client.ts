@@ -708,8 +708,10 @@ export function createHarshy(deps: CreateHarshyDeps = {}): HarshyClient {
       if (previousEngine && previousEngine !== engine) {
         await previousEngine.stopPreview?.();
       }
+      // Keep setDetectorConfig / prior trip bars unless start() passes overrides.
+      // Spreading only deps.detector here wiped host Settings on auto start.
       detectorConfig = mergeDetectorConfig({
-        ...deps.detector,
+        ...detectorConfig,
         ...options?.detector,
       });
       const nativeOpts = mergeNativeStartOptions({
@@ -1063,6 +1065,7 @@ export function createHarshy(deps: CreateHarshyDeps = {}): HarshyClient {
   requestAutoStart = () =>
     client.start({
       trigger: "auto",
+      detector: detectorConfig,
       ...(hostDevice ? { device: hostDevice } : {}),
     });
   requestAutoStop = () => client.stop();
