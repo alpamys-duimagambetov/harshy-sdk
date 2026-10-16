@@ -13,7 +13,7 @@ pnpm test    # package tests via turbo (includes native Android JUnit; Swift on 
 pnpm check   # build + typecheck + lint + test
 ```
 
-CI (`.github/workflows/ci.yml`) runs install → build → typecheck → lint → test on Ubuntu (with JDK 17 + Android SDK). A separate `native-ios` macOS job runs `swift test` for HarshyMath.
+CI (`.github/workflows/ci.yml`) runs install → build → typecheck → lint → test on Ubuntu (with JDK 17 + Android SDK). A separate `native-ios` macOS job runs `swift test` for HarshyMath, then builds the full `Harshy` package for the iOS Simulator (`xcodebuild`) so the UIKit-dependent engine and client are compiled. That step checks compilation only; the engine and client have no unit tests yet. The macOS job pins its runner (`macos-26`) and Xcode (`DEVELOPER_DIR`) so it does not change when `macos-latest` or the image's default Xcode moves; bump both together in the workflow.
 
 ## What to test
 
