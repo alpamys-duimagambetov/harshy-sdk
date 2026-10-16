@@ -42,3 +42,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: HarshyMath Swift tests
         run: swift test --package-path packages/native/HarshyMath
+      # HarshyEngine and HarshyClient import UIKit, so HarshyMath cannot compile them. Build the full
+      # package for iOS so a break in the CoreLocation / CoreMotion client fails the PR.
+      - name: Build Harshy for iOS Simulator
+        working-directory: packages/native
+        run: xcodebuild -scheme Harshy -destination 'generic/platform=iOS Simulator' -quiet CODE_SIGNING_ALLOWED=NO build
