@@ -181,6 +181,24 @@ let session = harshyAnalyzeTrip(
 )
 ```
 
+Remote configuration and a compact upload (the Swift counterparts of the Kotlin helpers above):
+
+```swift
+// `remote` is decoded JSON, e.g. [String: Any] from JSONSerialization.
+let detector = harshyDetectorConfig(fromMap: remote["detector"] as? [String: Any])
+let capture = harshyNativeStartOptions(
+  fromMap: remote["capture"] as? [String: Any],
+  base: HarshyNativeStartOptions(imuHz: 25, locationIntervalMs: 1_000, background: false)
+)
+
+let session = harshy.stop()
+let json = try harshyCompactSessionExport(session).toJSONString()
+```
+
+`harshyDetectorConfig(fromMap:base:)` and `harshyNativeStartOptions(fromMap:base:)` ignore unknown keys. A detector value that is not a number (a string or a boolean included), is not finite, or breaks the `@harshy/core` schema bounds keeps the base value, so one bad key does not discard the rest. `speedingMps` may be `NSNull` to switch speeding off. Capture rates are rounded and clamped instead: `imuHz` to `harshyImuHzRange` and `locationIntervalMs` to `harshyLocationIntervalMsRange`; `background`, `trigger` and other keys keep the base value.
+
+`harshyCompactSessionExport` drops the raw IMU and, from each location sample, altitude, course and altitude accuracy. Every sample is kept, and the dropped fields are left out of the JSON, matching `@harshy/core` and Kotlin.
+
 ## Expo / React Native
 
 ```ts
