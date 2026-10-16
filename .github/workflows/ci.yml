@@ -37,9 +37,19 @@ jobs:
       - run: pnpm test
 
   native-ios:
-    runs-on: macos-latest
+    # Pinned so the job does not change when `macos-latest` or the image's default Xcode moves.
+    # Bump the runner label and the Xcode path together. Installed versions are listed in
+    # https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      # Fails fast, and records the toolchain in the log, if the pinned Xcode is not on the image.
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
       - name: HarshyMath Swift tests
         run: swift test --package-path packages/native/HarshyMath
       # HarshyEngine and HarshyClient import UIKit, so HarshyMath cannot compile them. Build the full
