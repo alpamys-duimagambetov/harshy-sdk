@@ -290,6 +290,7 @@ func harshyEmptyEventCounts() -> [String: Int] {
 enum HarshyTripBuffer {
   static let maxLocationSamples = 20_000
   static let maxImuMinutes = 120
+  static let defaultAnalyzerImuHz = 50
   /// Live `HarshyEngine` IMU array. Detection only needs seconds. There is no IMU journal on iOS.
   static let engineImuRamMinutes = 2
   static let defaultMinSpeedMps = 2.0
